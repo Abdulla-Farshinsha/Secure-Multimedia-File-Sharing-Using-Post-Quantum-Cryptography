@@ -1,0 +1,16 @@
+# Maven build output
+/target/
+
+# Synced reference material; keep sources/ read-only and out of Git
+/sources/
+/AGENTS.md
+
+# Local cryptographic keys, encrypted transfers, public-key exports, and databases
+*.pqky
+*.pqf
+*.pqpub
+*.db
+
+# Compiled Java output and logs
+*.class
+*.log
