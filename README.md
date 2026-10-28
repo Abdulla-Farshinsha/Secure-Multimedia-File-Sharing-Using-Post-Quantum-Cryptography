@@ -7,9 +7,34 @@ The desktop app supports local accounts and the first two-person file exchange:
 1. Each person creates an account with a username and password. Each account has its own ML-KEM keys and private activity history.
 2. The recipient selects **Create or export my public key** and shares the resulting `.pqpub` file.
 3. The sender selects **Encrypt for a recipient**, chooses a file and the recipient's `.pqpub`, checks the displayed fingerprint with the recipient over a trusted channel, and saves the `.pqf` file.
-4. The recipient selects **Add received .pqf file to inbox**, chooses the file they received, selects it in the Inbox list, and decrypts it.
+4. For a direct transfer, the recipient clicks **Start receiving** and shares the displayed IP address and port. The sender enters those values and selects **Send encrypted file**. The received file appears in the recipient's Inbox. (Alternatively, share the `.pqf` file outside the app and add it to the Inbox.)
+5. The recipient selects the file in the Inbox and decrypts it.
 
-Cryptographic and file operations run in a background worker so the window remains responsive. The app keeps each account's incoming `.pqf` files in its own local inbox folder and shows the six most recent completed file operations in that account's activity list. Activity is saved in a local SQLite database at `~/.pq-file-share/transfers.db`. It stores file names, paths, timestamps, direction, and recipient-key fingerprints; it does not store file contents or private keys in the history database. File exchange still happens by sharing `.pqpub` and `.pqf` files outside the app.
+Cryptographic and file operations run in a background worker so the window remains responsive. Direct transfer works between computers that can reach each other on the same local network. The TCP connection carries only the already-encrypted `.pqf` file. If Windows Firewall asks, allow the app on your private network. The app keeps each account's incoming `.pqf` files in its own local inbox folder and shows the six most recent completed file operations in that account's activity list. Activity is saved in a local SQLite database at `~/.pq-file-share/transfers.db`. It stores file names, paths, timestamps, direction, and recipient-key fingerprints; it does not store file contents or private keys in the history database.
+
+## Work with your teammate using Git
+
+The shared repository is [Secure Multimedia File Sharing Using Post-Quantum Cryptography](https://github.com/Abdulla-Farshinsha/Secure-Multimedia-File-Sharing-Using-Post-Quantum-Cryptography). Your teammate clones it once:
+
+```text
+git clone https://github.com/Abdulla-Farshinsha/Secure-Multimedia-File-Sharing-Using-Post-Quantum-Cryptography.git
+```
+
+Before starting work, each person gets the latest changes:
+
+```text
+git pull
+```
+
+After making a change, save and share it:
+
+```text
+git add .
+git commit -m "Describe the change"
+git push
+```
+
+The other person then runs `git pull`. Try not to edit the same file at the same time; Git may ask you to resolve a conflict if both people change the same lines.
 
 ## Requirements
 
@@ -42,4 +67,4 @@ It asks for the key-store password in the terminal and creates example files und
 - AES-GCM provides file-content confidentiality and detects tampering.
 - The encapsulation and 12-byte nonce must travel with the encrypted data. The private key stays with the recipient.
 
-The `.pqf` format currently stores a magic marker, version, ML-KEM encapsulation, nonce, and encrypted bytes. The `.pqpub` file contains the recipient's ML-KEM public key. The `.pqky` key store keeps the public key available and encrypts the private key using PBKDF2-HMAC-SHA-256 and AES-GCM. An in-app shared inbox and network transfer are future additions; for now, pass files between users yourself.
+The `.pqf` format currently stores a magic marker, version, ML-KEM encapsulation, nonce, and encrypted bytes. The `.pqpub` file contains the recipient's ML-KEM public key. The `.pqky` key store keeps the public key available and encrypts the private key using PBKDF2-HMAC-SHA-256 and AES-GCM.

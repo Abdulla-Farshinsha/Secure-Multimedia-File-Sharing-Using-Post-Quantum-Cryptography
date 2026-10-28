@@ -13,6 +13,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -23,6 +24,11 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.Security;
@@ -32,7 +38,7 @@ import java.util.concurrent.Executors;
 
 /** Desktop workflow for exporting a key, encrypting for a recipient, and decrypting a received file. */
 public final class PqFileShareApp extends Application {
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
+    private final ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "pq-file-worker");
         thread.setDaemon(true);
         return thread;
@@ -45,7 +51,15 @@ public final class PqFileShareApp extends Application {
     private Button decryptButton;
     private Button exportKeyButton;
     private Button importButton;
+    private Button sendFileButton;
+    private Button receiveButton;
     private Button logoutButton;
+    private TextField recipientAddress;
+    private TextField sendPortField;
+    private TextField receivePortField;
+    private Label networkStatus;
+    private Task<Path> receiveTask;
+    private volatile ServerSocket receivingServer;
     private ProgressIndicator progress;
     private Label status;
     private ListView<String> history;
@@ -183,6 +197,32 @@ public final class PqFileShareApp extends Application {
         importButton.setStyle(buttonStyle(false));
         importButton.setOnAction(event -> importReceivedFile());
 
+        Label networkTitle = new Label("Direct transfer over the local network");
+        networkTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
+        Label networkNote = new Label("The recipient starts listening first. Only encrypted .pqf files are sent.");
+        networkNote.setWrapText(true);
+        recipientAddress = new TextField();
+        recipientAddress.setPromptText("Recipient IP address");
+        sendPortField = new TextField("45821");
+        sendPortField.setPromptText("Port");
+        sendPortField.setPrefWidth(88);
+        sendFileButton = new Button("Send encrypted file");
+        sendFileButton.setStyle(buttonStyle(false));
+        sendFileButton.setOnAction(event -> sendEncryptedFile());
+        HBox senderRow = new HBox(8, recipientAddress, sendPortField, sendFileButton);
+        HBox.setHgrow(recipientAddress, Priority.ALWAYS);
+
+        receivePortField = new TextField("45821");
+        receivePortField.setPromptText("Port");
+        receivePortField.setPrefWidth(88);
+        receiveButton = new Button("Start receiving");
+        receiveButton.setStyle(buttonStyle(false));
+        receiveButton.setOnAction(event -> toggleReceiving());
+        networkStatus = new Label("Not listening");
+        networkStatus.setWrapText(true);
+        HBox receiverRow = new HBox(8, new Label("Receive port:"), receivePortField, receiveButton);
+        VBox networkPanel = new VBox(8, networkTitle, networkNote, senderRow, receiverRow, networkStatus);
+
         VBox actions = new VBox(12, encryptButton, exportKeyButton);
         Label inboxTitle = new Label("Inbox");
         inboxTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
@@ -227,16 +267,19 @@ public final class PqFileShareApp extends Application {
         HBox accountRow = new HBox(10, accountLabel, logoutButton);
         accountRow.setAlignment(Pos.CENTER_RIGHT);
         VBox card = new VBox(14, accountRow, eyebrow, title, subtitle, actions, keyNote,
-                inboxPanel, historyTitle, history, statusRow);
+                networkPanel, inboxPanel, historyTitle, history, statusRow);
         card.setPadding(new Insets(32));
         card.setMaxWidth(540);
         card.setStyle("-fx-background-color: white; -fx-background-radius: 18; -fx-effect: dropshadow(gaussian, rgba(23,48,56,0.12), 24, 0.15, 0, 8);");
-        VBox root = new VBox(card);
-        root.setAlignment(Pos.CENTER);
-        root.setPadding(new Insets(28));
-        root.setStyle("-fx-background-color: #f1f5f3;");
-        VBox.setVgrow(card, Priority.NEVER);
-        stage.setScene(new Scene(root, 700, 790));
+        ScrollPane scroll = new ScrollPane(card);
+        scroll.setFitToWidth(true);
+        scroll.setStyle("-fx-background: #f1f5f3; -fx-background-color: #f1f5f3;");
+        VBox screen = new VBox(scroll);
+        screen.setAlignment(Pos.CENTER);
+        screen.setPadding(new Insets(18));
+        screen.setStyle("-fx-background-color: #f1f5f3;");
+        VBox.setVgrow(scroll, Priority.ALWAYS);
+        stage.setScene(new Scene(screen, 760, 820));
         refreshHistory();
         refreshInbox();
     }
@@ -321,6 +364,140 @@ public final class PqFileShareApp extends Application {
         });
         operation.setOnFailed(event -> failOperation(operation.getException()));
         executor.execute(operation);
+    }
+
+    private void sendEncryptedFile() {
+        String host = recipientAddress.getText().trim();
+        if (host.isEmpty()) {
+            showMessage(Alert.AlertType.INFORMATION, "Recipient address needed", "Enter the recipient's local IP address first.");
+            return;
+        }
+        final int port;
+        try {
+            port = parsePort(sendPortField.getText());
+        } catch (IllegalArgumentException e) {
+            showMessage(Alert.AlertType.ERROR, "Port is not valid", e.getMessage());
+            return;
+        }
+        FileChooser chooser = new FileChooser();
+        chooser.setTitle("Choose the encrypted file to send");
+        chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Encrypted PQFS files", "*.pqf"));
+        File encrypted = chooser.showOpenDialog(stage);
+        if (encrypted == null) return;
+
+        setBusy(true, "Sending encrypted file to " + host + "…");
+        Task<Void> task = new Task<>() {
+            @Override protected Void call() throws Exception {
+                NetworkFileTransfer.send(encrypted.toPath(), host, port);
+                return null;
+            }
+        };
+        task.setOnSucceeded(event -> setBusy(false, "File sent: " + encrypted.getName()));
+        task.setOnFailed(event -> failOperation(task.getException()));
+        executor.execute(task);
+    }
+
+    private void toggleReceiving() {
+        if (receiveTask != null) {
+            stopReceiving();
+            return;
+        }
+        final int port;
+        try {
+            port = parsePort(receivePortField.getText());
+        } catch (IllegalArgumentException e) {
+            showMessage(Alert.AlertType.ERROR, "Port is not valid", e.getMessage());
+            return;
+        }
+
+        final ServerSocket server;
+        try {
+            server = new ServerSocket();
+            server.setReuseAddress(true);
+            server.bind(new InetSocketAddress(port));
+            server.setSoTimeout(1000);
+        } catch (IOException e) {
+            showMessage(Alert.AlertType.ERROR, "Could not start receiving", readableError(e));
+            return;
+        }
+        receivingServer = server;
+        Path accountInbox = inboxPath();
+        Task<Path> task = new Task<>() {
+            @Override protected Path call() throws Exception {
+                try (server) {
+                    while (!isCancelled()) {
+                        try {
+                            Socket client = server.accept();
+                            return NetworkFileTransfer.receive(client, accountInbox);
+                        } catch (SocketTimeoutException ignored) {
+                            // Check periodically whether the user asked to stop listening.
+                        }
+                    }
+                    throw new InterruptedException("Receiving stopped.");
+                }
+            }
+        };
+        receiveTask = task;
+        receiveButton.setText("Stop receiving");
+        receivePortField.setDisable(true);
+        logoutButton.setDisable(true);
+        String localAddress;
+        try {
+            localAddress = InetAddress.getLocalHost().getHostAddress();
+        } catch (IOException e) {
+            localAddress = "this computer's local IP address";
+        }
+        networkStatus.setText("Waiting for one file at " + localAddress + ":" + port
+                + ". Give this address and port to the sender.");
+        task.setOnSucceeded(event -> {
+            if (receiveTask != task) return;
+            finishListening(task);
+            refreshInbox();
+            networkStatus.setText("Received " + task.getValue().getFileName() + ". It is now in your inbox.");
+        });
+        task.setOnFailed(event -> {
+            if (receiveTask != task) return;
+            finishListening(task);
+            networkStatus.setText("Receive failed: " + readableError(task.getException()));
+        });
+        task.setOnCancelled(event -> {
+            if (receiveTask == task) finishListening(task);
+        });
+        executor.execute(task);
+    }
+
+    private void stopReceiving() {
+        Task<Path> task = receiveTask;
+        ServerSocket server = receivingServer;
+        receiveTask = null;
+        receivingServer = null;
+        if (task != null) task.cancel(true);
+        if (server != null) {
+            try { server.close(); } catch (IOException ignored) { }
+        }
+        receiveButton.setText("Start receiving");
+        receivePortField.setDisable(false);
+        logoutButton.setDisable(false);
+        networkStatus.setText("Stopped listening.");
+    }
+
+    private void finishListening(Task<Path> task) {
+        if (receiveTask != task) return;
+        receiveTask = null;
+        receivingServer = null;
+        receiveButton.setText("Start receiving");
+        receivePortField.setDisable(false);
+        logoutButton.setDisable(false);
+    }
+
+    private static int parsePort(String value) {
+        try {
+            int port = Integer.parseInt(value.trim());
+            if (port < 1 || port > 65535) throw new NumberFormatException();
+            return port;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Enter a port number from 1 to 65535, for example 45821.");
+        }
     }
 
     private void decryptReceivedFile() {
@@ -411,6 +588,12 @@ public final class PqFileShareApp extends Application {
         decryptButton.setDisable(busy || inbox == null || inbox.getSelectionModel().getSelectedItem() == null);
         exportKeyButton.setDisable(busy);
         importButton.setDisable(busy);
+        sendFileButton.setDisable(busy);
+        recipientAddress.setDisable(busy);
+        sendPortField.setDisable(busy);
+        receiveButton.setDisable(busy && receiveTask == null);
+        receivePortField.setDisable(busy || receiveTask != null);
+        logoutButton.setDisable(busy || receiveTask != null);
         progress.setVisible(busy);
         status.setText(message);
     }
