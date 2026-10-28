@@ -50,7 +50,6 @@ public final class PqFileShareApp extends Application {
     private Button encryptButton;
     private Button decryptButton;
     private Button exportKeyButton;
-    private Button exportSigningKeyButton;
     private Button importButton;
     private Button sendFileButton;
     private Button receiveButton;
@@ -186,17 +185,11 @@ public final class PqFileShareApp extends Application {
         decryptButton.setStyle(buttonStyle(false));
         decryptButton.setOnAction(event -> decryptReceivedFile());
 
-        exportKeyButton = new Button("Export my ML-KEM encryption key");
+        exportKeyButton = new Button("Create or export my public key");
         exportKeyButton.setMaxWidth(Double.MAX_VALUE);
         exportKeyButton.setMinHeight(44);
         exportKeyButton.setStyle(buttonStyle(false));
         exportKeyButton.setOnAction(event -> exportPublicKey());
-
-        exportSigningKeyButton = new Button("Export my ML-DSA signature key");
-        exportSigningKeyButton.setMaxWidth(Double.MAX_VALUE);
-        exportSigningKeyButton.setMinHeight(44);
-        exportSigningKeyButton.setStyle(buttonStyle(false));
-        exportSigningKeyButton.setOnAction(event -> exportSigningPublicKey());
 
         importButton = new Button("Add received .pqf file to inbox");
         importButton.setMaxWidth(Double.MAX_VALUE);
@@ -206,7 +199,7 @@ public final class PqFileShareApp extends Application {
 
         Label networkTitle = new Label("Direct transfer over the local network");
         networkTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
-        Label networkNote = new Label("The recipient starts listening first. The encrypted file carries its sender signature.");
+        Label networkNote = new Label("The recipient starts listening first. Only encrypted .pqf files are sent.");
         networkNote.setWrapText(true);
         recipientAddress = new TextField();
         recipientAddress.setPromptText("Recipient IP address");
@@ -230,10 +223,10 @@ public final class PqFileShareApp extends Application {
         HBox receiverRow = new HBox(8, new Label("Receive port:"), receivePortField, receiveButton);
         VBox networkPanel = new VBox(8, networkTitle, networkNote, senderRow, receiverRow, networkStatus);
 
-        VBox actions = new VBox(12, encryptButton, exportKeyButton, exportSigningKeyButton);
+        VBox actions = new VBox(12, encryptButton, exportKeyButton);
         Label inboxTitle = new Label("Inbox");
         inboxTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
-        Label inboxNote = new Label("Select a received file, verify the sender's signature key, then decrypt it.");
+        Label inboxNote = new Label("Add a .pqf file someone shared with you, select it here, then decrypt it.");
         inboxNote.setWrapText(true);
         inbox = new ListView<>();
         inbox.setPlaceholder(new Label("Your inbox is empty"));
@@ -249,7 +242,7 @@ public final class PqFileShareApp extends Application {
                 decryptButton.setDisable(busy || newValue == null));
         decryptButton.setMaxWidth(Double.MAX_VALUE);
         VBox inboxPanel = new VBox(8, inboxTitle, inboxNote, importButton, inbox, decryptButton);
-        Label keyNote = new Label("Share .pqpub with the sender and .pqsigpub with the recipient. Compare both key fingerprints over a trusted channel.");
+        Label keyNote = new Label("Share your .pqpub file with the recipient. Verify its fingerprint with them over a trusted channel before encrypting.");
         keyNote.setWrapText(true);
         keyNote.setStyle("-fx-text-fill: #74858a; -fx-font-size: 12px;");
 
@@ -337,7 +330,6 @@ public final class PqFileShareApp extends Application {
             @Override
             protected Boolean call() throws Exception {
                 FileCrypto.encrypt(source.toPath(), destination.toPath(), recipientPublicKey);
-                FileSignature.sign(destination.toPath(), currentAccount.signingKeys().getPrivate());
                 return recordTransfer("ENCRYPTED", destination, recipientPublicKey);
             }
         };
@@ -515,40 +507,6 @@ public final class PqFileShareApp extends Application {
             return;
         }
 
-        final boolean signed;
-        final java.security.PublicKey senderSigningKey;
-        final long encryptedContainerLength;
-        try {
-            signed = FileSignature.hasSignature(source);
-            if (signed) {
-                FileChooser keyChooser = new FileChooser();
-                keyChooser.setTitle("Choose the sender's ML-DSA verification key");
-                keyChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("PQFS signature keys", "*.pqsigpub"));
-                File signingKeyFile = keyChooser.showOpenDialog(stage);
-                if (signingKeyFile == null) return;
-                senderSigningKey = SigningPublicKeyFile.read(signingKeyFile.toPath());
-                String fingerprint = SigningPublicKeyFile.fingerprint(senderSigningKey);
-                Alert verify = new Alert(Alert.AlertType.CONFIRMATION);
-                verify.initOwner(stage);
-                verify.setTitle("Verify sender's signature key");
-                verify.setHeaderText("Compare this fingerprint with the sender over a trusted channel");
-                verify.setContentText(fingerprint + "\n\nContinue only if it matches the sender's fingerprint.");
-                if (verify.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
-            } else {
-                senderSigningKey = null;
-                Alert warning = new Alert(Alert.AlertType.CONFIRMATION);
-                warning.initOwner(stage);
-                warning.setTitle("Unsigned file");
-                warning.setHeaderText("This older file has no sender signature");
-                warning.setContentText("The encrypted contents can still be checked, but the sender's identity cannot be verified. Continue anyway?");
-                if (warning.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) return;
-            }
-            encryptedContainerLength = FileSignature.encryptedContainerLength(source);
-        } catch (Exception e) {
-            showMessage(Alert.AlertType.ERROR, "Signature key or file could not be checked", readableError(e));
-            return;
-        }
-
         FileChooser saveChooser = new FileChooser();
         saveChooser.setTitle("Save decrypted file");
         saveChooser.setInitialFileName(decryptedName(source.getFileName().toString()));
@@ -559,8 +517,7 @@ public final class PqFileShareApp extends Application {
         Task<Boolean> operation = new Task<>() {
             @Override
             protected Boolean call() throws Exception {
-                if (signed) FileSignature.verify(source, senderSigningKey);
-                FileCrypto.decrypt(source, destination.toPath(), currentAccount.keys().getPrivate(), encryptedContainerLength);
+                FileCrypto.decrypt(source, destination.toPath(), currentAccount.keys().getPrivate());
                 return recordTransfer("DECRYPTED", destination, currentAccount.keys().getPublic());
             }
         };
@@ -598,30 +555,6 @@ public final class PqFileShareApp extends Application {
         executor.execute(operation);
     }
 
-    private void exportSigningPublicKey() {
-        FileChooser saveChooser = new FileChooser();
-        saveChooser.setTitle("Save your ML-DSA signature public key to share");
-        saveChooser.setInitialFileName("my-signature-key.pqsigpub");
-        File destination = saveChooser.showSaveDialog(stage);
-        if (destination == null) return;
-
-        setBusy(true, "Exporting your signature verification key…");
-        Task<String> operation = new Task<>() {
-            @Override protected String call() throws Exception {
-                SigningPublicKeyFile.write(destination.toPath(), currentAccount.signingKeys().getPublic());
-                return SigningPublicKeyFile.fingerprint(currentAccount.signingKeys().getPublic());
-            }
-        };
-        operation.setOnSucceeded(event -> {
-            setBusy(false, "Signature public key exported.");
-            showMessage(Alert.AlertType.INFORMATION, "Signature verification key ready",
-                    "Share this .pqsigpub file with people who receive your files:\n" + destination.getAbsolutePath()
-                            + "\n\nFingerprint (the recipient should compare this with you):\n" + operation.getValue());
-        });
-        operation.setOnFailed(event -> failOperation(operation.getException()));
-        executor.execute(operation);
-    }
-
     private static Path legacyKeyPath() {
         return Path.of(System.getProperty("user.home"), ".pq-file-share", "recipient.pqky");
     }
@@ -654,7 +587,6 @@ public final class PqFileShareApp extends Application {
         encryptButton.setDisable(busy);
         decryptButton.setDisable(busy || inbox == null || inbox.getSelectionModel().getSelectedItem() == null);
         exportKeyButton.setDisable(busy);
-        exportSigningKeyButton.setDisable(busy);
         importButton.setDisable(busy);
         sendFileButton.setDisable(busy);
         recipientAddress.setDisable(busy);
@@ -729,9 +661,6 @@ public final class PqFileShareApp extends Application {
     private void finishOperation(File destination, String heading, boolean historySaved) {
         setBusy(false, "Finished: " + destination.getName());
         String message = "Saved the result to:\n" + destination.getAbsolutePath();
-        if (heading.equals("Encrypted file ready")) {
-            message += "\n\nThe recipient also needs your .pqsigpub file and should compare its fingerprint with you.";
-        }
         if (!historySaved) message += "\n\nThe file is ready, but it could not be added to local history.";
         showMessage(Alert.AlertType.INFORMATION, heading, message);
     }

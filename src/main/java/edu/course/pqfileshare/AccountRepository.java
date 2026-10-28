@@ -2,7 +2,6 @@ package edu.course.pqfileshare;
 
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.jcajce.spec.MLKEMParameterSpec;
-import org.bouncycastle.jcajce.spec.MLDSAParameterSpec;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -72,11 +71,9 @@ public final class AccountRepository {
         byte[] passwordHash = derivePasswordHash(password, salt);
         String keyId = UUID.randomUUID().toString();
         Path accountKeyPath = accountKeyPath(keyId);
-        Path signingKeyPath = signingKeyPath(keyId);
         Files.createDirectories(accountKeyPath.getParent());
 
         KeyPair keys;
-        KeyPair signingKeys;
         try {
             if (accountCount == 0 && Files.exists(legacyKeyPath)) {
                 // Keep the key created during the earlier checkpoint so existing .pqpub files still match.
@@ -87,15 +84,10 @@ public final class AccountRepository {
                 keys = generator.generateKeyPair();
             }
             RecipientKeyStore.save(accountKeyPath, keys, password.clone());
-            KeyPairGenerator signingGenerator = KeyPairGenerator.getInstance("MLDSA", "BC");
-            signingGenerator.initialize(MLDSAParameterSpec.ml_dsa_65, new SecureRandom());
-            signingKeys = signingGenerator.generateKeyPair();
-            SigningKeyStore.save(signingKeyPath, signingKeys, password.clone());
         } catch (GeneralSecurityException | IOException | RuntimeException e) {
             Arrays.fill(salt, (byte) 0);
             Arrays.fill(passwordHash, (byte) 0);
             Files.deleteIfExists(accountKeyPath);
-            Files.deleteIfExists(signingKeyPath);
             throw e;
         }
 
@@ -120,11 +112,10 @@ public final class AccountRepository {
                     }
                 }
                 connection.commit();
-                return new AccountSession(id, normalizedUsername, accountKeyPath, keys, signingKeys);
+                return new AccountSession(id, normalizedUsername, accountKeyPath, keys);
             } catch (SQLException e) {
                 connection.rollback();
                 Files.deleteIfExists(accountKeyPath);
-                Files.deleteIfExists(signingKeyPath);
                 if (e.getMessage() != null && e.getMessage().toLowerCase().contains("unique")) {
                     throw new IllegalArgumentException("That username is already taken.", e);
                 }
@@ -156,17 +147,7 @@ public final class AccountRepository {
                     }
                     Path keyPath = accountKeyPath(keyId);
                     KeyPair keys = RecipientKeyStore.load(keyPath, password.clone());
-                    Path signingPath = signingKeyPath(keyId);
-                    KeyPair signingKeys;
-                    if (Files.exists(signingPath)) {
-                        signingKeys = SigningKeyStore.load(signingPath, password.clone());
-                    } else {
-                        KeyPairGenerator signingGenerator = KeyPairGenerator.getInstance("MLDSA", "BC");
-                        signingGenerator.initialize(MLDSAParameterSpec.ml_dsa_65, new SecureRandom());
-                        signingKeys = signingGenerator.generateKeyPair();
-                        SigningKeyStore.save(signingPath, signingKeys, password.clone());
-                    }
-                    return new AccountSession(id, savedUsername, keyPath, keys, signingKeys);
+                    return new AccountSession(id, savedUsername, keyPath, keys);
                 } finally {
                     Arrays.fill(salt, (byte) 0);
                     Arrays.fill(expectedHash, (byte) 0);
@@ -195,10 +176,6 @@ public final class AccountRepository {
 
     private static Path accountKeyPath(String keyId) {
         return Path.of(System.getProperty("user.home"), ".pq-file-share", "accounts", keyId + ".pqky");
-    }
-
-    private static Path signingKeyPath(String keyId) {
-        return Path.of(System.getProperty("user.home"), ".pq-file-share", "accounts", keyId + ".pqsigky");
     }
 
     private static Connection open() throws SQLException {

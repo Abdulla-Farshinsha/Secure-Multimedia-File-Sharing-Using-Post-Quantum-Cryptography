@@ -1,17 +1,16 @@
 # PQ File Share — JavaFX checkpoint
 
-This is the runnable project for **Secure Multimedia File Sharing Using Post-Quantum Cryptography: ML-KEM, ML-DSA, and AES-GCM**.
+This is the next runnable checkpoint for **Secure Multimedia File Sharing Using Post-Quantum Cryptography: ML-KEM and AES-GCM**.
 
 The desktop app supports local accounts and the first two-person file exchange:
 
-1. Each person creates an account with a username and password. Each account gets ML-KEM encryption keys and ML-DSA signing keys.
-2. The recipient exports their ML-KEM public key (`.pqpub`) and shares it with the sender. Compare its fingerprint over a trusted channel.
-3. The sender exports their ML-DSA verification key (`.pqsigpub`) and shares it with the recipient. Compare its fingerprint over a trusted channel.
-4. The sender selects **Encrypt for a recipient**, chooses the file and recipient's `.pqpub`, then saves the encrypted and signed `.pqf` file.
-5. For a direct transfer, the recipient clicks **Start receiving** and shares the displayed IP address and port. The sender enters those values and selects **Send encrypted file**. Alternatively, pass the `.pqf` file outside the app and add it to the Inbox.
-6. The recipient selects the file in the Inbox, chooses the sender's `.pqsigpub` key, confirms its fingerprint, then verifies and decrypts the file.
+1. Each person creates an account with a username and password. Each account has its own ML-KEM keys and private activity history.
+2. The recipient selects **Create or export my public key** and shares the resulting `.pqpub` file.
+3. The sender selects **Encrypt for a recipient**, chooses a file and the recipient's `.pqpub`, checks the displayed fingerprint with the recipient over a trusted channel, and saves the `.pqf` file.
+4. For a direct transfer, the recipient clicks **Start receiving** and shares the displayed IP address and port. The sender enters those values and selects **Send encrypted file**. The received file appears in the recipient's Inbox. (Alternatively, share the `.pqf` file outside the app and add it to the Inbox.)
+5. The recipient selects the file in the Inbox and decrypts it.
 
-Cryptographic and file operations run in a background worker so the window remains responsive. Direct transfer works between computers that can reach each other on the same local network. The TCP connection carries only the encrypted `.pqf` file, including its signature. If Windows Firewall asks, allow the app on your private network. The app keeps each account's incoming `.pqf` files in its own local inbox folder and shows the six most recent completed file operations in that account's activity list. Activity is saved in a local SQLite database at `~/.pq-file-share/transfers.db`. It stores file names, paths, timestamps, direction, and recipient-key fingerprints; it does not store file contents or private keys in the history database.
+Cryptographic and file operations run in a background worker so the window remains responsive. Direct transfer works between computers that can reach each other on the same local network. The TCP connection carries only the already-encrypted `.pqf` file. If Windows Firewall asks, allow the app on your private network. The app keeps each account's incoming `.pqf` files in its own local inbox folder and shows the six most recent completed file operations in that account's activity list. Activity is saved in a local SQLite database at `~/.pq-file-share/transfers.db`. It stores file names, paths, timestamps, direction, and recipient-key fingerprints; it does not store file contents or private keys in the history database.
 
 ## Work with your teammate using Git
 
@@ -51,7 +50,7 @@ From the project folder:
 mvn javafx:run
 ```
 
-On first use, choose **Create account**, enter a username (3–24 letters, numbers, dots, dashes, or underscores), and choose a password of at least 8 characters. If you already made a recipient key in the earlier version of the app, use that same password when creating the first account; this keeps your existing ML-KEM public key valid. The app creates a signing key for existing accounts at their next sign-in. Later, sign in using the account username and password. Use **Log out** to switch accounts.
+On first use, choose **Create account**, enter a username (3–24 letters, numbers, dots, dashes, or underscores), and choose a password of at least 8 characters. If you already made a recipient key in the earlier version of the app, use that same password when creating the first account; this keeps your existing public key valid. Later, sign in using the account username and password. Use **Log out** to switch accounts.
 
 The earlier command-line cryptography demo remains available:
 
@@ -66,7 +65,6 @@ It asks for the key-store password in the terminal and creates example files und
 - ML-KEM is used to establish a shared secret; it does not encrypt the file directly.
 - HKDF derives the 256-bit symmetric key from that secret.
 - AES-GCM provides file-content confidentiality and detects tampering.
-- ML-DSA-65 signs the encrypted container so recipients can verify the sender's key and detect changes before decrypting.
 - The encapsulation and 12-byte nonce must travel with the encrypted data. The private key stays with the recipient.
 
-The `.pqf` format stores the ML-KEM encapsulation, nonce, encrypted bytes, and an ML-DSA signature trailer. `.pqpub` files contain recipient ML-KEM public keys; `.pqsigpub` files contain sender ML-DSA verification keys. The `.pqky` and `.pqsigky` key stores protect ML-KEM and ML-DSA private keys with PBKDF2-HMAC-SHA-256 and AES-GCM. Older unsigned `.pqf` files can still be decrypted after a warning, but their sender cannot be authenticated.
+The `.pqf` format currently stores a magic marker, version, ML-KEM encapsulation, nonce, and encrypted bytes. The `.pqpub` file contains the recipient's ML-KEM public key. The `.pqky` key store keeps the public key available and encrypts the private key using PBKDF2-HMAC-SHA-256 and AES-GCM.

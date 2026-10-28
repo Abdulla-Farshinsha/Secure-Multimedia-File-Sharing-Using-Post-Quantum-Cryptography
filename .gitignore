@@ -7,8 +7,6 @@
 
 # Local cryptographic keys, encrypted transfers, public-key exports, and databases
 *.pqky
-*.pqsigky
-*.pqsigpub
 *.pqf
 *.pqpub
 *.db
