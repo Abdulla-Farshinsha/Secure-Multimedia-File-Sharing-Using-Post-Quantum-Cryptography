@@ -16,7 +16,10 @@ import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.ColumnConstraints;
+import javafx.scene.layout.GridPane;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
@@ -77,8 +80,8 @@ public final class PqFileShareApp extends Application {
             showMessage(Alert.AlertType.ERROR, "Startup failed", "Could not open the local account database: " + readableError(e));
         }
         primaryStage.setTitle("Secure File Share");
-        primaryStage.setMinWidth(560);
-        primaryStage.setMinHeight(510);
+        primaryStage.setMinWidth(680);
+        primaryStage.setMinHeight(600);
         primaryStage.show();
     }
 
@@ -91,8 +94,12 @@ public final class PqFileShareApp extends Application {
         confirmation.setPromptText("Repeat password (for new accounts)");
         Button signIn = new Button("Sign in");
         Button create = new Button("Create account");
-        signIn.setStyle(buttonStyle(true));
-        create.setStyle(buttonStyle(false));
+        signIn.setDefaultButton(true);
+        signIn.getStyleClass().add("primary-button");
+        create.getStyleClass().add("secondary-button");
+        username.getStyleClass().add("input-field");
+        password.getStyleClass().add("input-field");
+        confirmation.getStyleClass().add("input-field");
         signIn.setMaxWidth(Double.MAX_VALUE);
         create.setMaxWidth(Double.MAX_VALUE);
         ProgressIndicator loginProgress = new ProgressIndicator();
@@ -103,26 +110,28 @@ public final class PqFileShareApp extends Application {
         HBox actions = new HBox(10, signIn, create);
         HBox.setHgrow(signIn, Priority.ALWAYS);
         HBox.setHgrow(create, Priority.ALWAYS);
-        VBox fields = new VBox(10, username, password, confirmation, actions);
+        VBox fields = new VBox(12, username, password, confirmation, actions);
         VBox.setMargin(actions, new Insets(8, 0, 0, 0));
         signIn.setOnAction(event -> runAccountAction(false, username, password, confirmation, loginProgress, loginStatus, signIn, create));
         create.setOnAction(event -> runAccountAction(true, username, password, confirmation, loginProgress, loginStatus, signIn, create));
 
         Label eyebrow = new Label("PRIVATE FILE TRANSFER");
-        eyebrow.setStyle("-fx-text-fill: #4e877f; -fx-font-size: 11px; -fx-font-weight: bold;");
+        eyebrow.getStyleClass().add("eyebrow");
         Label title = new Label("Secure File Share");
-        title.setStyle("-fx-text-fill: #182b35; -fx-font-size: 30px; -fx-font-weight: bold;");
-        VBox card = new VBox(16, eyebrow, title,
-                new Label("Sign in, or create an account to get started."), fields,
+        title.getStyleClass().add("page-title");
+        Label intro = new Label("A private, simple way to send files. Sign in or create an account to get started.");
+        intro.setWrapText(true);
+        intro.getStyleClass().add("intro-copy");
+        VBox card = new VBox(18, eyebrow, title, intro, fields,
                 new HBox(10, loginProgress, loginStatus));
-        card.setPadding(new Insets(32));
-        card.setMaxWidth(540);
-        card.setStyle("-fx-background-color: white; -fx-background-radius: 18; -fx-effect: dropshadow(gaussian, rgba(23,48,56,0.12), 24, 0.15, 0, 8);");
-        VBox root = new VBox(card);
+        card.getStyleClass().add("surface");
+        card.setPadding(new Insets(42));
+        card.setMaxWidth(520);
+        StackPane root = new StackPane(card);
         root.setAlignment(Pos.CENTER);
         root.setPadding(new Insets(28));
-        root.setStyle("-fx-background-color: #f1f5f3;");
-        stage.setScene(new Scene(root, 700, 500));
+        root.getStyleClass().add("app-background");
+        stage.setScene(createScene(root, 1000, 700));
     }
 
     private void runAccountAction(boolean creating, TextField username, PasswordField passwordField,
@@ -166,72 +175,79 @@ public final class PqFileShareApp extends Application {
     private void showHomeScreen() {
 
         Label eyebrow = new Label("PRIVATE FILE TRANSFER");
-        eyebrow.setStyle("-fx-text-fill: #4e877f; -fx-font-size: 11px; -fx-font-weight: bold; -fx-letter-spacing: 1.4px;");
+        eyebrow.getStyleClass().add("eyebrow");
         Label title = new Label("Secure File Share");
-        title.setStyle("-fx-text-fill: #182b35; -fx-font-size: 30px; -fx-font-weight: bold;");
+        title.getStyleClass().add("page-title");
         Label subtitle = new Label("Exchange public keys, then protect files with post-quantum key exchange and authenticated encryption.");
         subtitle.setWrapText(true);
-        subtitle.setStyle("-fx-text-fill: #60737a; -fx-font-size: 14px;");
+        subtitle.getStyleClass().add("intro-copy");
 
         encryptButton = new Button("Encrypt for a recipient");
         encryptButton.setMaxWidth(Double.MAX_VALUE);
         encryptButton.setMinHeight(48);
-        encryptButton.setStyle(buttonStyle(true));
+        encryptButton.getStyleClass().add("primary-button");
         encryptButton.setOnAction(event -> encryptForRecipient());
 
         decryptButton = new Button("Decrypt selected inbox file");
         decryptButton.setMaxWidth(Double.MAX_VALUE);
         decryptButton.setMinHeight(48);
-        decryptButton.setStyle(buttonStyle(false));
+        decryptButton.getStyleClass().add("primary-button");
         decryptButton.setOnAction(event -> decryptReceivedFile());
 
         exportKeyButton = new Button("Create or export my public key");
         exportKeyButton.setMaxWidth(Double.MAX_VALUE);
         exportKeyButton.setMinHeight(44);
-        exportKeyButton.setStyle(buttonStyle(false));
+        exportKeyButton.getStyleClass().add("secondary-button");
         exportKeyButton.setOnAction(event -> exportPublicKey());
 
         importButton = new Button("Add received .pqf file to inbox");
         importButton.setMaxWidth(Double.MAX_VALUE);
         importButton.setMinHeight(44);
-        importButton.setStyle(buttonStyle(false));
+        importButton.getStyleClass().add("secondary-button");
         importButton.setOnAction(event -> importReceivedFile());
 
         Label networkTitle = new Label("Direct transfer over the local network");
-        networkTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
+        networkTitle.getStyleClass().add("section-title");
         Label networkNote = new Label("The recipient starts listening first. Only encrypted .pqf files are sent.");
         networkNote.setWrapText(true);
         recipientAddress = new TextField();
         recipientAddress.setPromptText("Recipient IP address");
         sendPortField = new TextField("45821");
         sendPortField.setPromptText("Port");
-        sendPortField.setPrefWidth(88);
+        sendPortField.setPrefWidth(110);
+        recipientAddress.getStyleClass().add("input-field");
+        sendPortField.getStyleClass().add("input-field");
         sendFileButton = new Button("Send encrypted file");
-        sendFileButton.setStyle(buttonStyle(false));
+        sendFileButton.getStyleClass().add("secondary-button");
         sendFileButton.setOnAction(event -> sendEncryptedFile());
         HBox senderRow = new HBox(8, recipientAddress, sendPortField, sendFileButton);
         HBox.setHgrow(recipientAddress, Priority.ALWAYS);
 
         receivePortField = new TextField("45821");
         receivePortField.setPromptText("Port");
-        receivePortField.setPrefWidth(88);
+        receivePortField.setPrefWidth(110);
+        receivePortField.getStyleClass().add("input-field");
         receiveButton = new Button("Start receiving");
-        receiveButton.setStyle(buttonStyle(false));
+        receiveButton.getStyleClass().add("secondary-button");
         receiveButton.setOnAction(event -> toggleReceiving());
         networkStatus = new Label("Not listening");
         networkStatus.setWrapText(true);
-        HBox receiverRow = new HBox(8, new Label("Receive port:"), receivePortField, receiveButton);
-        VBox networkPanel = new VBox(8, networkTitle, networkNote, senderRow, receiverRow, networkStatus);
+        Label portLabel = new Label("Receive port");
+        portLabel.getStyleClass().add("field-label");
+        HBox receiverRow = new HBox(8, portLabel, receivePortField, receiveButton);
+        receiverRow.setAlignment(Pos.CENTER_LEFT);
+        VBox networkPanel = new VBox(12, networkTitle, networkNote, senderRow, receiverRow, networkStatus);
 
-        VBox actions = new VBox(12, encryptButton, exportKeyButton);
-        Label inboxTitle = new Label("Inbox");
-        inboxTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
+        Label inboxTitle = new Label("Your inbox");
+        inboxTitle.getStyleClass().add("section-title");
         Label inboxNote = new Label("Add a .pqf file someone shared with you, select it here, then decrypt it.");
         inboxNote.setWrapText(true);
         inbox = new ListView<>();
         inbox.setPlaceholder(new Label("Your inbox is empty"));
-        inbox.setPrefHeight(100);
-        inbox.setMaxHeight(100);
+        inbox.setPrefHeight(210);
+        inbox.setMinHeight(140);
+        inbox.setMaxHeight(260);
+        inbox.getStyleClass().add("file-list");
         inbox.setCellFactory(list -> new ListCell<>() {
             @Override protected void updateItem(Path item, boolean empty) {
                 super.updateItem(item, empty);
@@ -241,53 +257,103 @@ public final class PqFileShareApp extends Application {
         inbox.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, newValue) ->
                 decryptButton.setDisable(busy || newValue == null));
         decryptButton.setMaxWidth(Double.MAX_VALUE);
-        VBox inboxPanel = new VBox(8, inboxTitle, inboxNote, importButton, inbox, decryptButton);
+        VBox inboxPanel = new VBox(12, inboxTitle, inboxNote, importButton, inbox, decryptButton);
+        inboxPanel.getStyleClass().add("panel");
         Label keyNote = new Label("Share your .pqpub file with the recipient. Verify its fingerprint with them over a trusted channel before encrypting.");
         keyNote.setWrapText(true);
-        keyNote.setStyle("-fx-text-fill: #74858a; -fx-font-size: 12px;");
+        keyNote.getStyleClass().add("hint-copy");
 
         progress = new ProgressIndicator();
         progress.setMaxSize(22, 22);
         progress.setVisible(false);
         status = new Label("Ready");
-        status.setStyle("-fx-text-fill: #60737a; -fx-font-size: 12px;");
+        status.getStyleClass().add("status-copy");
         HBox statusRow = new HBox(10, progress, status);
         statusRow.setAlignment(Pos.CENTER_LEFT);
 
         Label historyTitle = new Label("Recent activity");
-        historyTitle.setStyle("-fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold;");
+        historyTitle.getStyleClass().add("section-title");
         history = new ListView<>();
         history.setPlaceholder(new Label("No files processed yet"));
-        history.setPrefHeight(120);
-        history.setMaxHeight(120);
+        history.setPrefHeight(190);
+        history.setMinHeight(130);
+        history.setMaxHeight(260);
+        history.getStyleClass().add("file-list");
+        history.setCellFactory(list -> new ListCell<>() {
+            private final Label text = new Label();
+            { text.setWrapText(true); text.setMaxWidth(Double.MAX_VALUE); setContentDisplay(javafx.scene.control.ContentDisplay.GRAPHIC_ONLY); }
+            @Override protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                text.setText(empty || item == null ? "" : item);
+                setGraphic(empty || item == null ? null : text);
+            }
+        });
 
         Label accountLabel = new Label("Signed in as " + currentAccount.username());
         logoutButton = new Button("Log out");
         logoutButton.setOnAction(event -> { currentAccount = null; showLoginScreen(); });
+        accountLabel.getStyleClass().add("account-label");
+        logoutButton.getStyleClass().add("quiet-button");
         HBox accountRow = new HBox(10, accountLabel, logoutButton);
         accountRow.setAlignment(Pos.CENTER_RIGHT);
-        VBox card = new VBox(14, accountRow, eyebrow, title, subtitle, actions, keyNote,
-                networkPanel, inboxPanel, historyTitle, history, statusRow);
-        card.setPadding(new Insets(32));
-        card.setMaxWidth(540);
-        card.setStyle("-fx-background-color: white; -fx-background-radius: 18; -fx-effect: dropshadow(gaussian, rgba(23,48,56,0.12), 24, 0.15, 0, 8);");
+        HBox.setHgrow(accountLabel, Priority.ALWAYS);
+        HBox actionRow = new HBox(14, encryptButton, exportKeyButton);
+        actionRow.setAlignment(Pos.CENTER_LEFT);
+        HBox.setHgrow(encryptButton, Priority.ALWAYS);
+        HBox.setHgrow(exportKeyButton, Priority.ALWAYS);
+        VBox transferPanel = new VBox(14, networkPanel, keyNote);
+        transferPanel.getStyleClass().add("panel");
+        VBox inboxColumn = new VBox(14, inboxPanel, historyTitle, history, statusRow);
+        HBox.setHgrow(transferPanel, Priority.ALWAYS);
+        HBox.setHgrow(inboxColumn, Priority.ALWAYS);
+        GridPane columns = new GridPane();
+        columns.setHgap(18);
+        columns.setVgap(14);
+        columns.add(transferPanel, 0, 0);
+        columns.add(inboxColumn, 1, 0);
+        VBox.setVgrow(inbox, Priority.ALWAYS);
+        VBox card = new VBox(20, accountRow, eyebrow, title, subtitle, actionRow, columns);
+        card.setPadding(new Insets(34));
+        card.setMaxWidth(1440);
+        card.getStyleClass().add("dashboard-content");
+        columns.getColumnConstraints().setAll(new ColumnConstraints(), new ColumnConstraints());
+        columns.getColumnConstraints().get(0).setPercentWidth(50);
+        columns.getColumnConstraints().get(1).setPercentWidth(50);
+        columns.widthProperty().addListener((obs, oldWidth, newWidth) -> {
+            boolean wide = newWidth.doubleValue() >= 900;
+            columns.getColumnConstraints().clear();
+            if (wide) {
+                ColumnConstraints left = new ColumnConstraints(); left.setPercentWidth(50);
+                ColumnConstraints right = new ColumnConstraints(); right.setPercentWidth(50);
+                columns.getColumnConstraints().addAll(left, right);
+                GridPane.setConstraints(transferPanel, 0, 0);
+                GridPane.setConstraints(inboxColumn, 1, 0);
+                columns.setHgap(18);
+            } else {
+                ColumnConstraints full = new ColumnConstraints(); full.setPercentWidth(100);
+                columns.getColumnConstraints().add(full);
+                GridPane.setConstraints(transferPanel, 0, 0);
+                GridPane.setConstraints(inboxColumn, 0, 1);
+                columns.setHgap(0);
+            }
+        });
         ScrollPane scroll = new ScrollPane(card);
         scroll.setFitToWidth(true);
-        scroll.setStyle("-fx-background: #f1f5f3; -fx-background-color: #f1f5f3;");
-        VBox screen = new VBox(scroll);
-        screen.setAlignment(Pos.CENTER);
-        screen.setPadding(new Insets(18));
-        screen.setStyle("-fx-background-color: #f1f5f3;");
-        VBox.setVgrow(scroll, Priority.ALWAYS);
-        stage.setScene(new Scene(screen, 760, 820));
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.getStyleClass().add("app-scroll");
+        StackPane screen = new StackPane(scroll);
+        screen.setAlignment(Pos.TOP_CENTER);
+        screen.getStyleClass().add("app-background");
+        stage.setScene(createScene(screen, 1180, 860));
         refreshHistory();
         refreshInbox();
     }
 
-    private static String buttonStyle(boolean primary) {
-        return primary
-                ? "-fx-background-color: #26766e; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 10; -fx-cursor: hand;"
-                : "-fx-background-color: #e8efed; -fx-text-fill: #26454b; -fx-font-size: 14px; -fx-font-weight: bold; -fx-background-radius: 10; -fx-cursor: hand;";
+    private Scene createScene(javafx.scene.Parent root, double width, double height) {
+        Scene scene = new Scene(root, width, height);
+        var stylesheet = getClass().getResource("/edu/course/pqfileshare/app.css");
+        if (stylesheet != null) scene.getStylesheets().add(stylesheet.toExternalForm());
+        return scene;
     }
 
     private void encryptForRecipient() {
