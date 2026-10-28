@@ -11,6 +11,8 @@ import java.io.BufferedOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.FilterInputStream;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -87,10 +89,22 @@ public final class FileCrypto {
     /** Decrypts a .pqf container. The destination is replaced only after GCM authenticates fully. */
     public static void decrypt(Path encryptedInput, Path decryptedOutput, PrivateKey recipientPrivateKey)
             throws IOException, GeneralSecurityException {
+        decrypt(encryptedInput, decryptedOutput, recipientPrivateKey,
+                FileSignature.encryptedContainerLength(encryptedInput));
+    }
+
+    /** Decrypts only the specified .pqf container bytes, excluding any verified signature trailer. */
+    public static void decrypt(Path encryptedInput, Path decryptedOutput, PrivateKey recipientPrivateKey,
+                               long encryptedContainerLength) throws IOException, GeneralSecurityException {
+        long fileLength = Files.size(encryptedInput);
+        if (encryptedContainerLength < 1 || encryptedContainerLength > fileLength) {
+            throw new IOException("Invalid encrypted-container length.");
+        }
         Path temporary = createTemporaryBeside(decryptedOutput);
         byte[] fileKey = null;
         try {
-            try (DataInputStream in = new DataInputStream(new BufferedInputStream(Files.newInputStream(encryptedInput)));
+            try (DataInputStream in = new DataInputStream(new BufferedInputStream(
+                         new LimitedInputStream(Files.newInputStream(encryptedInput), encryptedContainerLength)));
                  DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Files.newOutputStream(temporary)))) {
                 byte[] magic = in.readNBytes(MAGIC.length);
                 if (!Arrays.equals(magic, MAGIC)) throw new IOException("This is not a PQFS encrypted file.");
@@ -150,6 +164,30 @@ public final class FileCrypto {
             if (transformed != null && transformed.length != 0) out.write(transformed);
         }
         Arrays.fill(buffer, (byte) 0);
+    }
+
+    private static final class LimitedInputStream extends FilterInputStream {
+        private long remaining;
+
+        private LimitedInputStream(InputStream input, long limit) {
+            super(input);
+            remaining = limit;
+        }
+
+        @Override public int read() throws IOException {
+            if (remaining == 0) return -1;
+            int value = super.read();
+            if (value != -1) remaining--;
+            return value;
+        }
+
+        @Override public int read(byte[] buffer, int offset, int length) throws IOException {
+            if (length == 0) return 0;
+            if (remaining == 0) return -1;
+            int count = super.read(buffer, offset, (int) Math.min(length, remaining));
+            if (count > 0) remaining -= count;
+            return count;
+        }
     }
 
     private static Path createTemporaryBeside(Path output) throws IOException {
